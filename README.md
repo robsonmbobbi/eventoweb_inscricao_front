@@ -59,6 +59,13 @@ MUI é uma biblioteca de componentes React prontos e estilizados que facilitam a
 
 ## Como Executar o Projeto
 
+### Requisitos
+
+- **Node.js:** v22.20.0
+- **npm:** 10.9.3
+
+### Passos
+
 ```bash
 # Instalar dependências
 npm install
