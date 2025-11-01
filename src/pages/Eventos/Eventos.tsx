@@ -10,10 +10,12 @@ import {
 } from "@mui/material";
 import { buscarEventosDisponiveis } from "../../services/eventos/eventosServices";
 import type { EventoListagem } from "../../interfaces/interfaces";
+import { useNavigate } from "react-router-dom";
 
 export default function Eventos() {
   const [eventos, setEventos] = useState<EventoListagem[]>([]);
   const [carregando, setCarregando] = useState(true);
+  const navigate = useNavigate();
 
   useEffect(() => {
     const carregarEventos = async () => {
@@ -112,10 +114,21 @@ export default function Eventos() {
                 <Button
                   variant="contained"
                   color="primary"
-                  href={`/comecar/${evento.id}`}
+                  onClick={() =>
+                    navigate(`/evento/${evento.id}/inscricao`, {
+                      state: { evento },
+                    })
+                  }
                 >
                   INSCREVER-SE
                 </Button>
+                {/*                 <Button
+                  variant="contained"
+                  color="primary"
+                  href={`/comecar/${evento.id}`}
+                >
+                  INSCREVER-SE
+                </Button> */}
               </CardContent>
             </Card>
           ))

@@ -39,7 +39,7 @@ async function mockEventos(): Promise<EventoListagem[]> {
       nome: "CEOMG",
       logotipo: "/assets/images/eventos/ceomg.png",
       idadeMinima: 18,
-      permiteInscricaoInfantil: false,
+      permiteInscricaoInfantil: true,
       periodoInscricao: {
         dataInicial: new Date("2026-01-01"),
         dataFinal: new Date("2026-02-29"),
