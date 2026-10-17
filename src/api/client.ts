@@ -12,6 +12,12 @@ interface ApiErrorPayload {
   mensagemErro?: string
 }
 
+/** Respostas da validação de origem e do rate limit do back, caso cheguem sem corpo. */
+const MENSAGENS_POR_STATUS: Record<number, string> = {
+  403: 'Acesso não permitido.',
+  429: 'Muitas tentativas em pouco tempo. Aguarde alguns instantes e tente novamente.',
+}
+
 apiClient.interceptors.response.use(
   (response) => response,
   (error: AxiosError<ApiErrorPayload>) => {
@@ -19,6 +25,7 @@ apiClient.interceptors.response.use(
     const message =
       payload?.exception ??
       payload?.mensagemErro ??
+      MENSAGENS_POR_STATUS[error.response?.status ?? 0] ??
       'Não foi possível completar a operação. Tente novamente.'
     return Promise.reject(new ApiError(message))
   },

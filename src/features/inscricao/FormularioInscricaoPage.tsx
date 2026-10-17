@@ -1,12 +1,13 @@
 import { useState } from 'react'
-import { useMutation } from '@tanstack/react-query'
-import { Controller, useForm } from 'react-hook-form'
+import { useMutation, useQuery } from '@tanstack/react-query'
+import { Controller, useForm, useWatch } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
 import { useNavigate, useParams } from 'react-router-dom'
 import { useShallow } from 'zustand/react/shallow'
 import { atualizarInscricao, incluirInscricao } from '../../api/inscricoes'
 import { ApiError } from '../../api/client'
+import { listarMunicipios, normalizar } from '../../api/ibge'
 import { Header } from '../../components/Header'
 import { Alert } from '../../components/ui/Alert'
 import { Badge } from '../../components/ui/Badge'
@@ -81,6 +82,7 @@ export function FormularioInscricaoPage() {
     handleSubmit,
     formState: { errors },
     setError,
+    setValue,
   } = useForm<FormValues>({
     resolver: zodResolver(schema),
     defaultValues: {
@@ -99,6 +101,15 @@ export function FormularioInscricaoPage() {
       observacoes: inscricaoConhecida?.observacoes ?? '',
       instituicoesEspiritasFrequenta: inscricaoConhecida?.instituicoesEspiritasFrequenta ?? '',
     },
+  })
+
+  const uf = useWatch({ control, name: 'uf' })
+  const municipios = useQuery({
+    queryKey: ['municipios', uf],
+    queryFn: () => listarMunicipios(uf),
+    enabled: Boolean(uf),
+    staleTime: Infinity,
+    gcTime: Infinity,
   })
 
   const salvar = useMutation({
@@ -127,6 +138,17 @@ export function FormularioInscricaoPage() {
       return
     }
 
+    // Com a lista do IBGE disponível, só aceita município da UF e envia a grafia oficial.
+    let cidade = values.cidade.trim()
+    if (municipios.data) {
+      const cidadeOficial = municipios.data.find((nome) => normalizar(nome) === normalizar(cidade))
+      if (!cidadeOficial) {
+        setError('cidade', { message: 'Selecione uma cidade da lista' })
+        return
+      }
+      cidade = cidadeOficial
+    }
+
     const inscricao: DTOInscricao = {
       id: inscricaoConhecida?.id ?? null,
       tipo: tipo ?? TipoInscricao.Adulto,
@@ -149,7 +171,7 @@ export function FormularioInscricaoPage() {
         sexo: Number(values.sexo) as Sexo,
         usaAdocanteDiariamente: values.usaAdocanteDiariamente,
         uf: values.uf,
-        cidade: values.cidade,
+        cidade,
       },
       responsavel1: isInfantil ? responsavel1 : null,
       responsavel2: isInfantil ? responsavel2 : null,
@@ -227,12 +249,12 @@ export function FormularioInscricaoPage() {
               />
             </FormField>
 
-            <div className="grid grid-cols-1 gap-3 sm:grid-cols-[2fr_1fr]">
-              <FormField label="Cidade" required error={errors.cidade?.message}>
-                <Input invalid={Boolean(errors.cidade)} {...register('cidade')} />
-              </FormField>
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-[1fr_2fr]">
               <FormField label="UF" required error={errors.uf?.message}>
-                <Select invalid={Boolean(errors.uf)} {...register('uf')}>
+                <Select
+                  invalid={Boolean(errors.uf)}
+                  {...register('uf', { onChange: () => setValue('cidade', '') })}
+                >
                   <option value="">--</option>
                   {UFS.map((uf) => (
                     <option key={uf} value={uf}>
@@ -240,6 +262,36 @@ export function FormularioInscricaoPage() {
                     </option>
                   ))}
                 </Select>
+              </FormField>
+              <FormField
+                label="Cidade"
+                required
+                error={errors.cidade?.message}
+                hint={
+                  municipios.isError
+                    ? 'Não foi possível carregar as cidades; digite manualmente.'
+                    : undefined
+                }
+              >
+                <Input
+                  list="municipios-uf"
+                  autoComplete="off"
+                  disabled={!uf}
+                  placeholder={
+                    !uf
+                      ? 'Selecione a UF primeiro'
+                      : municipios.isLoading
+                        ? 'Carregando cidades…'
+                        : 'Digite para buscar'
+                  }
+                  invalid={Boolean(errors.cidade)}
+                  {...register('cidade')}
+                />
+                <datalist id="municipios-uf">
+                  {municipios.data?.map((nome) => (
+                    <option key={nome} value={nome} />
+                  ))}
+                </datalist>
               </FormField>
             </div>
           </Card>

@@ -6,9 +6,10 @@ import { formatCurrency } from '../../lib/currency'
 interface InscricaoCartItemProps {
   inscricao: DTOInscricao
   valor: number | null
+  mostrarValor: boolean
 }
 
-export function InscricaoCartItem({ inscricao, valor }: InscricaoCartItemProps) {
+export function InscricaoCartItem({ inscricao, valor, mostrarValor }: InscricaoCartItemProps) {
   return (
     <div className="flex items-center gap-3 border-b border-line-divider px-4 py-3.5 last:border-b-0">
       <span className="h-2 w-2 flex-none rounded-full bg-success" />
@@ -18,9 +19,11 @@ export function InscricaoCartItem({ inscricao, valor }: InscricaoCartItemProps) 
           {inscricao.tipo === TipoInscricao.Adulto ? 'Adulto' : 'Infantil'}
         </Badge>
       </div>
-      <span className="text-[15px] font-bold text-ink-900">
-        {valor != null ? formatCurrency(valor) : '—'}
-      </span>
+      {mostrarValor && (
+        <span className="text-[15px] font-bold text-ink-900">
+          {valor != null ? formatCurrency(valor) : '—'}
+        </span>
+      )}
     </div>
   )
 }

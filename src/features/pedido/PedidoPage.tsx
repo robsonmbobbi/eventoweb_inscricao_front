@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { useMutation, useQueries, useQuery } from '@tanstack/react-query'
 import { useNavigate, useParams } from 'react-router-dom'
 import { useShallow } from 'zustand/react/shallow'
@@ -6,6 +6,7 @@ import { obterEvento } from '../../api/eventos'
 import { listarFormasPagamento } from '../../api/formasPagamento'
 import { obterPrecoInscricao } from '../../api/precos'
 import { incluirPedido } from '../../api/pedidos'
+import { pesquisarPessoaPorCpf } from '../../api/pessoas'
 import { ApiError } from '../../api/client'
 import { Header } from '../../components/Header'
 import { Alert } from '../../components/ui/Alert'
@@ -16,8 +17,9 @@ import { Input } from '../../components/ui/Input'
 import { MaskedInput } from '../../components/ui/MaskedInput'
 import { RadioCard } from '../../components/ui/RadioCard'
 import { TextArea } from '../../components/ui/TextArea'
+import { Toast } from '../../components/ui/Toast'
 import { formatCurrency } from '../../lib/currency'
-import { onlyDigits } from '../../lib/cpf'
+import { isValidCpf, onlyDigits } from '../../lib/cpf'
 import { TipoPagamento, TipoPedido } from '../../types/enums'
 import { usePedidoStore } from '../../store/usePedidoStore'
 import { InscricaoCartItem } from './InscricaoCartItem'
@@ -39,8 +41,11 @@ export function PedidoPage() {
     limpar: state.limpar,
   })))
 
+  // Evita que o carrinho esvaziado ao finalizar redirecione para /eventos por cima do resultado.
+  const pedidoFinalizado = useRef(false)
+
   useEffect(() => {
-    if (inscricoes.length === 0) navigate('/eventos', { replace: true })
+    if (inscricoes.length === 0 && !pedidoFinalizado.current) navigate('/eventos', { replace: true })
   }, [inscricoes.length, navigate])
 
   const { data: evento } = useQuery({
@@ -94,10 +99,34 @@ export function PedidoPage() {
   const pagarComCartao = intencao === 'pagar' && formaEscolhida?.tipo === TipoPagamento.Credito
   const numeroParcelas = parcelasEscolhidas ?? Math.max(1, formaEscolhida?.nrParcelasMinima ?? 1)
 
+  const buscarPagador = useMutation({
+    mutationFn: pesquisarPessoaPorCpf,
+    onSuccess: (pessoa) => {
+      if (!pessoa) return
+      setNomePagador(pessoa.nome)
+      setCelularPagador(onlyDigits(pessoa.celular ?? ''))
+      setEmailPagador(pessoa.email ?? '')
+    },
+    onError: (error) => {
+      setErro(error instanceof ApiError ? error.message : 'Não foi possível pesquisar o CPF.')
+    },
+  })
+
+  const cpfPagadorInvalido = cpfPagador.length === 11 && !isValidCpf(cpfPagador)
+  const buscaPagadorConcluida = buscarPagador.isSuccess || buscarPagador.isError
+
+  function handleCpfPagadorChange(novoCpf: string) {
+    if (novoCpf === cpfPagador) return
+    setCpfPagador(novoCpf)
+    buscarPagador.reset()
+    if (novoCpf.length === 11 && isValidCpf(novoCpf)) buscarPagador.mutate(novoCpf)
+  }
+
   const finalizar = useMutation({
     mutationFn: incluirPedido,
     onSuccess: (resultado) => {
       const quantidadeInscricoes = inscricoes.length
+      pedidoFinalizado.current = true
       limpar()
       navigate(`/eventos/${idEvento}/resultado`, {
         state: {
@@ -119,6 +148,10 @@ export function PedidoPage() {
 
     if (!nomePagador || !cpfPagador || !celularPagador || !emailPagador) {
       setErro('Preencha os dados do pagador para continuar.')
+      return
+    }
+    if (!isValidCpf(cpfPagador)) {
+      setErro('Informe um CPF válido para o responsável pelo pedido.')
       return
     }
     if ((intencao === 'desconto' || intencao === 'isencao') && !motivo.trim()) {
@@ -171,6 +204,7 @@ export function PedidoPage() {
 
   return (
     <div className="min-h-screen bg-surface-page pb-28">
+      {erro && <Toast onClose={() => setErro(null)}>{erro}</Toast>}
       <Header variant="brand" subtitle={evento?.nome} />
       <main className="mx-auto flex max-w-5xl flex-col gap-6 px-5 py-7 md:px-10">
         <div className="flex flex-col gap-1.5">
@@ -194,6 +228,7 @@ export function PedidoPage() {
                   key={inscricao.id ?? index}
                   inscricao={inscricao}
                   valor={valorPorInscricao[index] ?? null}
+                  mostrarValor={intencao === 'pagar'}
                 />
               ))}
               <div className="p-4">
@@ -208,28 +243,63 @@ export function PedidoPage() {
             </div>
 
             <Card title="Dados do responsável pelo pedido">
-              <FormField label="Nome" required>
-                <Input value={nomePagador} onChange={(e) => setNomePagador(e.target.value)} />
-              </FormField>
-              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-                <FormField label="CPF" required>
-                  <MaskedInput mask="000.000.000-00" value={cpfPagador} onChange={setCpfPagador} />
-                </FormField>
-                <FormField label="Celular" required>
+              <FormField
+                label="CPF"
+                required
+                error={cpfPagadorInvalido ? 'Informe um CPF válido' : undefined}
+                hint="Se você já tem cadastro, seus dados serão preenchidos automaticamente."
+              >
+                <div className="flex gap-2">
                   <MaskedInput
-                    mask="(00) 00000-0000"
-                    value={celularPagador}
-                    onChange={setCelularPagador}
+                    mask="000.000.000-00"
+                    value={cpfPagador}
+                    onChange={handleCpfPagadorChange}
+                    invalid={cpfPagadorInvalido}
+                    placeholder="000.000.000-00"
                   />
-                </FormField>
-              </div>
-              <FormField label="E-mail" required>
-                <Input
-                  type="email"
-                  value={emailPagador}
-                  onChange={(e) => setEmailPagador(e.target.value)}
-                />
+                  <Button
+                    type="button"
+                    variant="secondary"
+                    className="h-[46px] flex-none px-4"
+                    disabled={!isValidCpf(cpfPagador) || buscarPagador.isPending}
+                    onClick={() => buscarPagador.mutate(cpfPagador)}
+                  >
+                    {buscarPagador.isPending ? '...' : 'Buscar'}
+                  </Button>
+                </div>
               </FormField>
+
+              {buscarPagador.isSuccess && (
+                <Alert variant="info">
+                  {buscarPagador.data
+                    ? 'Encontramos seu cadastro. Confira os dados e ajuste se necessário.'
+                    : 'CPF não cadastrado. Preencha seus dados abaixo.'}
+                </Alert>
+              )}
+
+              {buscaPagadorConcluida && (
+                <>
+                  <FormField label="Nome" required>
+                    <Input value={nomePagador} onChange={(e) => setNomePagador(e.target.value)} />
+                  </FormField>
+                  <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                    <FormField label="Celular" required>
+                      <MaskedInput
+                        mask="(00) 00000-0000"
+                        value={celularPagador}
+                        onChange={setCelularPagador}
+                      />
+                    </FormField>
+                    <FormField label="E-mail" required>
+                      <Input
+                        type="email"
+                        value={emailPagador}
+                        onChange={(e) => setEmailPagador(e.target.value)}
+                      />
+                    </FormField>
+                  </div>
+                </>
+              )}
             </Card>
 
             <Card title="Como deseja seguir?">
@@ -303,19 +373,18 @@ export function PedidoPage() {
               )}
             </Card>
 
-            {erro && <Alert variant="error">{erro}</Alert>}
           </div>
 
           <div className="flex flex-col gap-4 rounded-section border border-line-card bg-white p-5 lg:sticky lg:top-6">
             <h4 className="text-[18px] font-bold text-ink-900">Resumo</h4>
-            <div className="flex items-baseline justify-between">
-              <span className="text-[14px] font-semibold text-ink-500">
-                {intencao === 'pagar' ? 'Total do pedido' : 'Total estimado'}
-              </span>
-              <span className="text-[26px] font-extrabold tracking-tight text-ink-900">
-                {total != null ? formatCurrency(total) : '—'}
-              </span>
-            </div>
+            {intencao === 'pagar' && (
+              <div className="flex items-baseline justify-between">
+                <span className="text-[14px] font-semibold text-ink-500">Total do pedido</span>
+                <span className="text-[26px] font-extrabold tracking-tight text-ink-900">
+                  {total != null ? formatCurrency(total) : '—'}
+                </span>
+              </div>
+            )}
             <Button onClick={handleFinalizar} disabled={finalizar.isPending} fullWidth>
               {finalizar.isPending ? (pagarComCartao ? 'Pagando…' : 'Finalizando…') : 'Finalizar'}
             </Button>

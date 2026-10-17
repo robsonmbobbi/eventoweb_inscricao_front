@@ -49,6 +49,8 @@ export function ResultadoPage() {
     const isPix = debito.tipoTransacao === TipoPagamento.Pix
     const cartaoAprovado = !isPix && debito.status === StatusTransacao.Recebida
     const cartaoRecusado = !isPix && debito.status === StatusTransacao.Cancelada
+    // O back só envia o link como fallback quando a cobrança no cartão não foi aprovada na hora.
+    const linkPagamento = !isPix && !cartaoAprovado && !cartaoRecusado ? debito.linkPagamento : null
     const parcelamento =
       numeroParcelas && numeroParcelas > 1
         ? ` em ${numeroParcelas}x de ${formatCurrency(resultado.valor / numeroParcelas)}`
@@ -65,7 +67,7 @@ export function ResultadoPage() {
     } else if (cartaoRecusado) {
       titulo = 'Pagamento não aprovado'
       descricao = 'A cobrança no cartão não foi aprovada. Entre em contato com a coordenação do evento.'
-    } else if (debito.linkPagamento) {
+    } else if (linkPagamento) {
       titulo = 'Seu link de pagamento está pronto'
       descricao = `Abra o link para pagar ${formatCurrency(resultado.valor)} com cartão de crédito.`
     } else {
@@ -83,8 +85,14 @@ export function ResultadoPage() {
             </div>
           )}
 
-          <Badge variant={isPix ? 'aviso' : STATUS_BADGE[debito.status]}>
-            {cartaoAprovado ? 'Pagamento aprovado' : STATUS_LABEL[debito.status]}
+          <Badge variant={STATUS_BADGE[debito.status]}>
+            {cartaoAprovado
+              ? 'Pagamento aprovado'
+              : cartaoRecusado
+                ? 'Pagamento recusado'
+                : !isPix && !linkPagamento
+                  ? 'Em processamento'
+                  : STATUS_LABEL[debito.status]}
           </Badge>
 
           <div className="flex flex-col gap-2">
@@ -104,8 +112,17 @@ export function ResultadoPage() {
             <CopyField label="Pix copia e cola" value={debito.pixCopiaECola} />
           )}
 
-          {!isPix && !cartaoAprovado && debito.linkPagamento && (
-            <CopyField label="Link de pagamento" value={debito.linkPagamento} copyLabel="Copiar link" />
+          {linkPagamento && (
+            <>
+              <CopyField label="Link de pagamento" value={linkPagamento} copyLabel="Copiar link" />
+              <Button
+                variant="secondary"
+                fullWidth
+                onClick={() => window.open(linkPagamento, '_blank', 'noopener,noreferrer')}
+              >
+                Abrir link de pagamento
+              </Button>
+            </>
           )}
 
           <div className="flex w-full flex-col gap-2 rounded-section border border-line-divider bg-surface-subtle p-3.5 text-left">
@@ -116,6 +133,18 @@ export function ResultadoPage() {
                 value={`${quantidadeInscricoes} pessoa${quantidadeInscricoes > 1 ? 's' : ''}`}
               />
             )}
+            {!isPix && <InfoRow label="Forma de pagamento" value="Cartão de crédito" />}
+            {!isPix && cartaoAprovado && (
+              <InfoRow
+                label="Parcelamento"
+                value={
+                  numeroParcelas && numeroParcelas > 1
+                    ? `${numeroParcelas}x de ${formatCurrency(resultado.valor / numeroParcelas)}`
+                    : 'À vista'
+                }
+              />
+            )}
+            <InfoRow label="Valor" value={formatCurrency(resultado.valor)} />
             {!isPix && emailPagador && <InfoRow label="Contato" value={emailPagador} />}
             {!isPix && celularPagador && <InfoRow label="WhatsApp" value={celularPagador} />}
           </div>
