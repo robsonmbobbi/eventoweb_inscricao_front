@@ -1,0 +1,45 @@
+name: CI
+
+on:
+  push:
+    branches: ['**']
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+
+      - run: npm ci
+      - run: npm run lint
+
+      - run: npm run build
+        env:
+          VITE_API_BASE_URL: /api
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: front-${{ github.sha }}
+          path: dist/
+          if-no-files-found: error
+
+  disparar-release:
+    needs: build
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Avisar o repositório do back
+        env:
+          GH_TOKEN: ${{ secrets.BACK_DISPATCH_TOKEN }}
+        run: |
+          gh api --method POST repos/robsonmbobbi/eventoweb_inscricao_back/dispatches \
+            -f event_type=front-main-atualizada \
+            -f "client_payload[sha]=$GITHUB_SHA"
